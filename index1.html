@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Coram Deo - Live Leaderboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Montserrat', sans-serif; max-width: 800px; margin: 20px auto; padding: 20px; background-color: #f4f7f6; text-align: center; color: #333; }
+        .hidden { display: none; }
+        #quiz-container, #intro-container, #leaderboard-section { background: white; padding: 30px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        
+        /* Animasi Transisi Soal */
+        #question-content { animation: fadeIn 0.4s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        .leaderboard-table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; border-radius: 12px; overflow: hidden; }
+        .leaderboard-table th { background: #28a745; color: white; padding: 15px; }
+        .leaderboard-table td { padding: 12px; border-bottom: 1px solid #eee; font-weight: bold; }
+        .rank-1 { background: #fff9db; color: #d4af37; font-size: 1.2em; }
+        
+        button { cursor: pointer; padding: 15px 30px; background: #28a745; color: white; border: none; border-radius: 12px; font-weight: bold; transition: 0.3s; margin-top: 15px; width: 100%; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        
+        input[type="text"] { width: 100%; padding: 15px; margin-bottom: 10px; border: 2px solid #e2e8f0; border-radius: 12px; text-align: center; box-sizing: border-box; }
+        
+        .option-label { display: block; background: #f8fafc; margin: 10px 0; padding: 15px; border-radius: 12px; cursor: pointer; border: 2px solid #edf2f7; text-align: left; transition: 0.2s; }
+        .option-label:hover { border-color: #28a745; background: #f0fff4; }
+        
+        #timer { font-size: 24px; color: #e74c3c; font-weight: bold; margin-bottom: 15px; }
+        #status-pesan { padding: 15px; border-radius: 10px; margin-bottom: 20px; font-weight: bold; }
+        .sudah-main { background: #fff5f5; color: #e74c3c; border: 1px solid #feb2b2; }
+        .siap-main { background: #f0fff4; color: #28a745; border: 1px solid #9ae6b4; }
+        .btn-wa { background: #25D366; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="intro-container">
+        <h2 style="color: #28a745;">Forum Coram Deo🕊️ 🏆</h2>
+        <div id="status-pesan"> Memuat status⏳ </div>
+        <div id="form-pendaftaran">
+            <input type="text" id="nama-input" placeholder="Masukkan Nama Lengkap Saudara">
+            <button onclick="startQuiz()">Mulai Kuis & Capai Skor Teratas💡</button>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 30px 0;">
+        <div id="leaderboard-section">
+            <h3>📊 10 PERINGKAT TERATAS</h3>
+            <table class="leaderboard-table">
+                <thead>
+                    <tr><th>Rank</th><th>Nama Peserta</th><th>Total Skor</th></tr>
+                </thead>
+                <tbody id="leaderboard-body">
+                    <tr><td colspan="3">Memuat papan skor...</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <p style="font-size: 10px; color: #ccc; margin-top: 40px; cursor: pointer;" onclick="adminReset()">Admin Reset</p>
+    </div>
+
+    <div id="quiz-container" class="hidden">
+        <div id="timer">15</div>
+        <div id="question-content"></div>
+        <button id="controlBtn" onclick="processAnswer()" disabled>Konfirmasi Jawaban</button>
+    </div>
+
+    <div id="certificate-screen" class="hidden">
+        <div id="certificate" style="background: white; padding: 30px; border-radius: 20px; border: 5px double #28a745;">
+            <h2>Selamat! 🎉</h2>
+            <h1 id="cert-name" style="color: #1e3799;">Nama</h1>
+            <p>Skor Akhir Kamu:</p>
+            <h1 id="cert-score" style="font-size: 60px; color: #28a745; margin-bottom: 5px;">0</h1>
+            <p id="cert-gelar" style="font-style: italic; font-weight: bold; margin-bottom: 20px;"></p>
+            <button class="btn-wa" onclick="shareWA()">Bagikan ke WhatsApp 📱</button>
+            <button onclick="location.reload()">Selesai & Kembali</button>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.17.1/firebase-database-compat.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyCctg_ysZNzU_LPbzQRwYu8ZepLyPJxnx0",
+            authDomain: "kuis-8ab9d.firebaseapp.com",
+            databaseURL: "https://kuis-8ab9d-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "kuis-8ab9d",
+            storageBucket: "kuis-8ab9d.firebasestorage.app",
+            messagingSenderId: "756570505588",
+            appId: "1:756570505588:web:bcaf1b7d22318528a96c21"
+        };
+
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+
+        const databaseSoal = [
+            { q: "Siapakah manusia pertama yang diciptakan Tuhan?", a: "Adam", options: ["Abraham", "Adam", "Musa"], base: 20 },
+            { q: "Berapa jumlah kitab dalam Alkitab?", a: "66", options: ["77", "66", "55"], base: 20 },
+            { q: "Di kota manakah Yesus dilahirkan?", a: "Betlehem", options: ["Betlehem", "Yerusalem", "Nazaret"], base: 20 },
+            { q: "Siapakah murid yang paling dikasihi Yesus?", a: "Yohanes", options: ["Petrus", "Yohanes", "Yudas"], base: 20 },
+            { q: "Perahu besar Nuh berhenti di gunung apa?", a: "Ararat", options: ["Sinai", "Ararat", "Zion"], base: 20 }
+        ];
+
+        let soalAcak = [], currentStep = 0, totalScore = 0, timeLeft = 15, timerInterval, userNama = "";
+
+        window.onload = () => {
+            if (localStorage.getItem("coram_deo_done")) {
+                document.getElementById("status-pesan").innerText = "🚫 Kamu sudah berpartisipasi. Pantau skor di bawah!";
+                document.getElementById("status-pesan").className = "sudah-main";
+                document.getElementById("form-pendaftaran").classList.add("hidden");
+            } else {
+                document.getElementById("status-pesan").innerText = "✅ Ayo tunjukkan kemampuanmu!";
+                document.getElementById("status-pesan").className = "siap-main";
+            }
+            
+            if (sessionStorage.getItem("quiz_running")) {
+                alert("Kuis terhenti karena halaman dimuat ulang. Silakan coba lagi.");
+                sessionStorage.removeItem("quiz_running");
+            }
+
+            updateLeaderboard();
+        };
+
+        function updateLeaderboard() {
+            db.ref("scores").orderByChild("skor").limitToLast(10).on("value", (snap) => {
+                let items = [];
+                snap.forEach(child => { items.push(child.val()); });
+                items.sort((a, b) => b.skor - a.skor);
+
+                let html = items.map((item, index) => `
+                    <tr class="${index === 0 ? 'rank-1' : ''}">
+                        <td>${index === 0 ? '🥇' : index + 1}</td>
+                        <td>${item.nama}</td>
+                        <td>${item.skor}</td>
+                    </tr>
+                `).join('');
+                document.getElementById("leaderboard-body").innerHTML = html || "<tr><td colspan='3'>Belum ada data skor.</td></tr>";
+            });
+        }
+
+        function startQuiz() {
+            userNama = document.getElementById("nama-input").value.trim();
+            if (userNama.length < 3) return alert("Masukkan nama yang valid!");
+            
+            sessionStorage.setItem("quiz_running", "true");
+            soalAcak = [...databaseSoal].sort(() => Math.random() - 0.5);
+            document.getElementById("intro-container").classList.add("hidden");
+            document.getElementById("quiz-container").classList.remove("hidden");
+            renderQuestion();
+        }
+
+        function renderQuestion() {
+            const soal = soalAcak[currentStep];
+            document.getElementById("controlBtn").disabled = true;
+            let html = `<p style='color:#28a745'>Pertanyaan ${currentStep + 1} / ${soalAcak.length}</p>
+                        <h3>${soal.q}</h3>`;
+            
+            const opsiSuffle = [...soal.options].sort(() => Math.random() - 0.5);
+            opsiSuffle.forEach(opt => {
+                html += `<label class="option-label">
+                            <input type="radio" name="opt" value="${opt === soal.a ? 'benar' : 'salah'}" onclick="enableBtn()"> ${opt}
+                         </label>`;
+            });
+            document.getElementById("question-content").innerHTML = html;
+            startTimer();
+        }
+
+        function enableBtn() { document.getElementById("controlBtn").disabled = false; }
+
+        function startTimer() {
+            timeLeft = 15;
+            document.getElementById("timer").innerText = timeLeft;
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                timeLeft--;
+                document.getElementById("timer").innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(timerInterval);
+                    processAnswer(true);
+                }
+            }, 1000);
+        }
+
+        function processAnswer(auto = false) {
+            const sel = document.querySelector('input[name="opt"]:checked');
+            
+            if (sel && sel.value === 'benar') {
+                totalScore += (soalAcak[currentStep].base + timeLeft);
+            }
+
+            if (currentStep < soalAcak.length - 1) {
+                currentStep++;
+                renderQuestion();
+            } else {
+                finishQuiz();
+            }
+        }
+
+        function finishQuiz() {
+            clearInterval(timerInterval);
+            sessionStorage.removeItem("quiz_running");
+            db.ref("scores").push({ nama: userNama, skor: totalScore });
+            localStorage.setItem("coram_deo_done", "true");
+
+            // Logika Gelar & Sindiran
+            let gelar = "";
+            let warnaGelar = "#28a745";
+
+            if (totalScore >= 150) {
+                gelar = "🏆 Level: Teolog Senior (Luar Biasa!)";
+            } else if (totalScore >= 100) {
+                gelar = "📖 Level: Aktivis Gereja (Mantap!)";
+            } else if (totalScore >= 60) {
+                gelar = "👟 Level: Jemaat Simpatisan (Lumayan lah...)";
+                warnaGelar = "#f39c12";
+            } else {
+                const sindiran = [
+                    "Level: Jemaat Ngantukan (Kebanyakan tidur pas khotbah ya?) 😴",
+                    "Level: Murtad Jalur Kuis (Baca Alkitab lagi yuk mumpung gratis) 📜",
+                    "Level: Kristen KTP (Cuma tahu 'Amin' doang kayaknya) 🤐",
+                    "Level: Pengamat Kursi Gereja (Datang telat, pulang duluan) 🏃‍♂️"
+                ];
+                gelar = sindiran[Math.floor(Math.random() * sindiran.length)];
+                warnaGelar = "#e74c3c";
+            }
+            
+            document.getElementById("quiz-container").classList.add("hidden");
+            document.getElementById("certificate-screen").classList.remove("hidden");
+            document.getElementById("cert-name").innerText = userNama;
+            document.getElementById("cert-score").innerText = totalScore;
+            
+            const gelarEl = document.getElementById("cert-gelar");
+            gelarEl.innerText = gelar;
+            gelarEl.style.color = warnaGelar;
+        }
+
+        function shareWA() {
+            const gelarText = document.getElementById("cert-gelar").innerText;
+            const text = `Syalom! Saya baru saja menyelesaikan Kuis Coram Deo.\n\nNama: ${userNama}\nSkor: ${totalScore}\n${gelarText}\n\nAyo uji pengetahuan Alkitabmu di sini! 🕊️`;
+            window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+        }
+
+        function adminReset() {
+            if (prompt("Password Admin:") === "admingbi") {
+                if (confirm("Hapus semua skor?")) {
+                    db.ref("scores").remove();
+                    localStorage.removeItem("coram_deo_done");
+                    location.reload();
+                }
+            }
+        }
+    </script>
+</body>
+</html>
